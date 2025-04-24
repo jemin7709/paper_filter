@@ -1,0 +1,11 @@
+- 테스트 환경
+- linux 22.04
+- python 3.11
+
+0. openvpn 설치
+1. requirement 설치 후 터미널에 "playwright install" 입력 후 실행한다.
+2. (optional) "python vpngate.py korea"로 vpn을 켠다. (이건 아마 리눅스만)
+3. 다른 터미널을 열어서 download.sh를 실행한다. (서버 막힘 방지)
+4. related_papers.py 안에 compare_papers 딕셔너리를 원하는 논문으로 수정한다.
+    - 제목: 초록 (만약에 에러나면 r"" 사용)
+5. related_papers.sh를 실행해 유사도가 높은 논문을 고른다.

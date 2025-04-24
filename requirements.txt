@@ -1,0 +1,8 @@
+pandas
+pytest-playwright
+openreview-py
+torch
+numpy
+sentence-transformers
+requests
+transformers
