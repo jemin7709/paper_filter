@@ -210,10 +210,11 @@ def process_archive_page(page: Page, target_year: str, output_path: str) -> bool
         paper_urls = get_paper_urls(page, track_url)
 
         for j, paper_url in enumerate(paper_urls):
-            print(f"\n--- {j + 1}/{len(paper_urls)} 번째 논문 처리 중 ---")
+            print(f"--- {j + 1}/{len(paper_urls)} 번째 논문 처리 중 ---")
 
             if is_paper_already_saved(paper_url, output_path):
                 print(f"이미 저장된 논문입니다: {paper_url}")
+                print("=" * 50)
                 continue
 
             try:
@@ -236,6 +237,7 @@ def process_archive_page(page: Page, target_year: str, output_path: str) -> bool
 
                 if not success:
                     print(f"{MAX_RETRIES}회 재시도 후 실패했습니다.")
+                print("=" * 50)
             except Exception as e:
                 print(f"논문 처리 중 오류 발생: {e}")
 

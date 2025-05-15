@@ -125,7 +125,9 @@ def save_to_csv(
     new_df = pd.DataFrame([paper_data])
     updated_df = pd.concat([df, new_df], ignore_index=True)
     updated_df.to_csv(csv_file, index=False)
-    print(f"논문 추가 및 저장 완료: {paper_data['title']}")
+    print("논문 추가 및 저장 완료")
+    print(f"Title: {paper_data['title']}")
+    print(f"Abstract: {paper_data['abstract'][:100]}...")
     return updated_df
 
 
@@ -166,6 +168,7 @@ def process_paper_links(
                 time.sleep(random.uniform(3, 5))
             else:
                 print(f"'{title}' 논문은 이미 존재합니다. 건너뜁니다...")
+                print("=" * 50)
         except Exception as e:
             print(f"'{title}' 논문 처리 중 오류 발생: {e}")
             failed_papers.append((title, e))
