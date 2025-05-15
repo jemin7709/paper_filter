@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import torch
 from sentence_transformers import SentenceTransformer
+from alive_progress import alive_bar
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -93,11 +94,12 @@ def get_embeddings(
     texts: List[str], model: SentenceTransformer, batch_size: int
 ) -> np.ndarray:
     embeddings = []
-    for i in range(0, len(texts), batch_size):
-        batch = [normalize_text(text) for text in texts[i : i + batch_size]]
-        batch_embeddings = model.encode(batch)
-        embeddings.append(batch_embeddings)
-        print(i)
+    with alive_bar(len(range(0, len(texts), batch_size)), title="임베딩 계산 중") as bar:
+        for i in range(0, len(texts), batch_size):
+            batch = [normalize_text(text) for text in texts[i : i + batch_size]]
+            batch_embeddings = model.encode(batch)
+            embeddings.append(batch_embeddings)
+            bar()
     return np.concatenate(embeddings, axis=0)
 
 
@@ -133,58 +135,60 @@ def process_papers(
     related_papers = []
     num_paper = 0
 
-    for i, paper_embedding in enumerate(paper_embeddings):
-        title = titles[i]
-        abstract = abstracts[i]
+    with alive_bar(len(paper_embeddings), title="논문 분석 중") as bar:
+        for i, paper_embedding in enumerate(paper_embeddings):
+            title = titles[i]
+            abstract = abstracts[i]
 
-        abstract_similarity = (
-            model.similarity(compare_papers_embeddings, paper_embedding)
-            .detach()
-            .cpu()
-            .numpy()
-        )
-
-        mean_similarity = np.mean(abstract_similarity)
-
-        is_related, reason = is_paper_related(abstract_similarity, args)
-
-        if is_related:
-            detailed_similarities = {}
-            for comp_title, sim in zip(compare_papers.keys(), abstract_similarity):
-                detailed_similarities[comp_title] = float(sim)
-
-            sorted_similarities = {
-                k: v
-                for k, v in sorted(
-                    detailed_similarities.items(),
-                    key=lambda item: item[1],
-                    reverse=True,
-                )
-            }
-            related_papers.append(
-                {
-                    "title": title,
-                    "abstract": abstract,
-                    "abstract_similarity": abstract_similarity,
-                    "mean_abstract_similarity": mean_similarity,
-                    "detailed_similarities": sorted_similarities,
-                }
+            abstract_similarity = (
+                model.similarity(compare_papers_embeddings, paper_embedding)
+                .detach()
+                .cpu()
+                .numpy()
             )
 
-            print(f"\n{'=' * 80}")
-            print(f"관련 논문 #{num_paper + 1}: {title}")
-            print(f"평균 유사도: {mean_similarity:.4f}")
-            print(f"선정 이유: {reason}")
-            print("\n요약:")
-            print(abstract[:100] + "...")
-            print("\n가장 유사한 논문 TOP 3:")
-            for idx, (comp_title, sim) in enumerate(
-                list(sorted_similarities.items())[:3]
-            ):
-                print(f"  {idx + 1}. {comp_title} (유사도: {sim:.4f})")
-            print(f"{'=' * 80}")
+            mean_similarity = np.mean(abstract_similarity)
 
-            num_paper += 1
+            is_related, reason = is_paper_related(abstract_similarity, args)
+
+            if is_related:
+                detailed_similarities = {}
+                for comp_title, sim in zip(compare_papers.keys(), abstract_similarity):
+                    detailed_similarities[comp_title] = float(sim)
+
+                sorted_similarities = {
+                    k: v
+                    for k, v in sorted(
+                        detailed_similarities.items(),
+                        key=lambda item: item[1],
+                        reverse=True,
+                    )
+                }
+                related_papers.append(
+                    {
+                        "title": title,
+                        "abstract": abstract,
+                        "abstract_similarity": abstract_similarity,
+                        "mean_abstract_similarity": mean_similarity,
+                        "detailed_similarities": sorted_similarities,
+                    }
+                )
+
+                print(f"\n{'=' * 80}")
+                print(f"관련 논문 #{num_paper + 1}: {title}")
+                print(f"평균 유사도: {mean_similarity:.4f}")
+                print(f"선정 이유: {reason}")
+                print("\n요약:")
+                print(abstract[:100] + "...")
+                print("\n가장 유사한 논문 TOP 3:")
+                for idx, (comp_title, sim) in enumerate(
+                    list(sorted_similarities.items())[:3]
+                ):
+                    print(f"  {idx + 1}. {comp_title} (유사도: {sim:.4f})")
+                print(f"{'=' * 80}")
+
+                num_paper += 1
+            bar()
 
     return related_papers, num_paper
 
@@ -222,6 +226,7 @@ def main():
     model = load_model()
     titles, abstracts, _ = load_data(args.file)
 
+    print("기준 논문과 입력 논문 임베딩 계산을 시작합니다.")
     compare_papers = {
         "Ablating Concepts in Text-to-Image Diffusion Models": "Large-scale text-to-image diffusion models can generate high-fidelity images with powerful compositional ability. However, these models are typically trained on an enormous amount of Internet data, often containing copyrighted material, licensed images, and personal photos. Furthermore, they have been found to replicate the style of various living artists or memorize exact training samples. How can we remove such copyrighted concepts or images without retraining the model from scratch? To achieve this goal, we propose an efficient method of ablating concepts in the pretrained model, i.e., preventing the generation of a target concept. Our algorithm learns to match the image distribution for a target style, instance, or text prompt we wish to ablate to the distribution corresponding to an anchor concept. This prevents the model from generating target concepts given its text condition. Extensive experiments show that our method can successfully prevent the generation of the ablated concept while preserving closely related concepts in the model.",
         "Erasing Concepts from Diffusion Models": "Motivated by recent advancements in text-to-image diffusion, we study erasure of specific concepts from the model's weights. While Stable Diffusion has shown promise in producing explicit or realistic artwork, it has raised concerns regarding its potential for misuse. We propose a fine-tuning method that can erase a visual concept from a pre-trained diffusion model, given only the name of the style and using negative guidance as a teacher. We benchmark our method against previous approaches that remove sexually explicit content and demonstrate its effectiveness, performing on par with Safe Latent Diffusion and censored training. To evaluate artistic style removal, we conduct experiments erasing five modern artists from the network and conduct a user study to assess the human perception of the removed styles. Unlike previous methods, our approach can remove concepts from a diffusion model permanently rather than modifying the output at the inference time, so it cannot be circumvented even if a user has access to model weights. Our code, data, and results are available at this https URL",
@@ -267,6 +272,8 @@ def main():
     ]
 
     paper_embeddings = get_embeddings(normalized_paper_list, model, args.batch_size)
+    
+    print("\n유사 논문 검색을 시작합니다.")
     related_papers, num_paper = process_papers(
         titles,
         abstracts,
@@ -280,7 +287,9 @@ def main():
     print(f"\n총 관련 논문 수: {num_paper}")
 
     if related_papers:
-        output_file, json_output_file = save_results(related_papers, args.file)
+        with alive_bar(1, title="결과 저장 중") as bar:
+            output_file, json_output_file = save_results(related_papers, args.file)
+            bar()
         print("\n검색 결과가 다음 파일로 저장되었습니다:")
         print(f"- CSV 파일: {output_file}")
         print(f"- JSON 파일: {json_output_file}")
