@@ -10,11 +10,15 @@ Paper Collector는 논문 제목과 초록을 수집하고 필터링하는 툴�
    ```
 2. 필요한 라이브러리를 설치합니다:
    ```bash
-   uv sync or pip install -r requirements.txt
+   uv sync or pip install -r requirements.txt (uv 사용 권장)
    ```
-3. 스크립트를 실행하여 데이터를 수집합니다:
+3. download_papers 스크립트를 실행하여 논문 데이터를 스크래핑합니다:
    ```bash
-   sh scripts/download_resources.sh
+   sh scripts/download_papers.sh
+   ```
+4. process_related_papers 스크립트를 실행해 논문 유사도를 계산합니다:
+   ```bash
+   sh scripts/process_related_papers.sh
    ```
 
 ## 파일 구조
@@ -25,10 +29,9 @@ Paper Collector는 논문 제목과 초록을 수집하고 필터링하는 툴�
 ├── README.md
 ├── data/ # 논문 목록 저장
 ├── network/
-│   └── vpngate.py # 스크래핑 시 VPN 연결
+│   └── vpngate.py # [선택사항] 스크래핑 시 VPN 연결 (vpn대신 tor 사용 권장, tor 사용 시 proxy 옵션 사용)
 ├── scripts/
-│   ├── download_resources.sh 
-│   ├── execute_all_scripts.sh
+│   ├── download_papers.sh 
 │   └── process_related_papers.sh
 └── src/
     ├── fetch_aaai_papers.py
