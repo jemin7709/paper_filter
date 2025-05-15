@@ -217,9 +217,25 @@ def process_archive_page(page: Page, target_year: str, output_path: str) -> bool
                 continue
 
             try:
-                paper_data = extract_paper_info(page, paper_url)
-                save_to_csv(paper_data, output_path)
-                time.sleep(random.uniform(3, 5))
+                MAX_RETRIES = 3
+                retries = 0
+                success = False
+
+                while retries < MAX_RETRIES and not success:
+                    try:
+                        paper_data = extract_paper_info(page, paper_url)
+                        save_to_csv(paper_data, output_path)
+                        time.sleep(random.uniform(3, 5))
+                        success = True
+                    except Exception as e:
+                        retries += 1
+                        print(
+                            f"논문 처리 중 오류 발생 (재시도 {retries}/{MAX_RETRIES}): {e}"
+                        )
+                        time.sleep(3)
+
+                if not success:
+                    print(f"{MAX_RETRIES}회 재시도 후 실패했습니다.")
             except Exception as e:
                 print(f"논문 처리 중 오류 발생: {e}")
 
