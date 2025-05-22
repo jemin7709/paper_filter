@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 import pandas as pd
 import torch
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, util
 from alive_progress import alive_bar
 
 torch.manual_seed(0)
@@ -21,7 +21,7 @@ np.set_printoptions(linewidth=np.inf)
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--file", type=str, default="./data/cvpr_24.csv")
-    parser.add_argument("--batch_size", type=int, default=1)
+    parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument(
         "--similarity_threshold",
         type=float,
@@ -56,17 +56,7 @@ def parse_arguments():
 
 
 def load_model() -> SentenceTransformer:
-    return SentenceTransformer(
-        "infgrad/jasper_en_vision_language_v1",
-        trust_remote_code=True,
-        device="cuda"
-        if torch.cuda.is_available()
-        else "mps"
-        if torch.backends.mps.is_available()
-        else "cpu",
-        model_kwargs={"torch_dtype": torch.bfloat16, "attn_implementation": "sdpa"},
-        config_kwargs={"is_text_encoder": True, "vector_dim": 1024},
-    )
+    return SentenceTransformer('intfloat/multilingual-e5-large-instruct')
 
 
 def load_data(file_path: str) -> Tuple[List[str], List[str], List[str]]:
@@ -96,9 +86,11 @@ def get_embeddings(
     embeddings = []
     with alive_bar(len(range(0, len(texts), batch_size)), title="임베딩 계산 중") as bar:
         for i in range(0, len(texts), batch_size):
-            batch = [normalize_text(text) for text in texts[i : i + batch_size]]
-            batch_embeddings = model.encode(batch)
-            embeddings.append(batch_embeddings)
+            batch = texts[i : i + batch_size]
+            batch_embeddings = model.encode(
+                batch, convert_to_tensor=True, normalize_embeddings=True
+            )
+            embeddings.append(batch_embeddings.cpu().numpy())
             bar()
     return np.concatenate(embeddings, axis=0)
 
@@ -129,23 +121,20 @@ def process_papers(
     paper_embeddings: np.ndarray,
     compare_papers_embeddings: np.ndarray,
     compare_papers: Dict[str, str],
-    model: SentenceTransformer,
     args: argparse.Namespace,
 ) -> Tuple[List[Dict[str, Any]], int]:
     related_papers = []
     num_paper = 0
+    compare_papers_embeddings_tensor = torch.tensor(compare_papers_embeddings)
 
     with alive_bar(len(paper_embeddings), title="논문 분석 중") as bar:
-        for i, paper_embedding in enumerate(paper_embeddings):
+        for i, paper_embedding_np in enumerate(paper_embeddings):
             title = titles[i]
             abstract = abstracts[i]
 
-            abstract_similarity = (
-                model.similarity(compare_papers_embeddings, paper_embedding)
-                .detach()
-                .cpu()
-                .numpy()
-            )
+            paper_embedding_tensor = torch.tensor(paper_embedding_np).unsqueeze(0)
+            similarities_tensor = util.pytorch_cos_sim(compare_papers_embeddings_tensor, paper_embedding_tensor)
+            abstract_similarity = similarities_tensor.cpu().numpy().flatten()
 
             mean_similarity = np.mean(abstract_similarity)
 
@@ -253,25 +242,26 @@ def main():
         "Generating Instance-level Prompts for Rehearsal-free Continual Learning": "We introduce Domain-Adaptive Prompt (DAP), a novel method for continual learning using Vision Transformers (ViT). Prompt-based continual learning has recently gained attention due to its rehearsal-free nature. Currently, the prompt pool, which is suggested by prompt-based continual learning, is key to effectively exploiting the frozen pretrained ViT backbone in a sequence of tasks. However, we observe that the use of a prompt pool creates a domain scalability problem between pre-training and continual learning. This problem arises due to the inherent encoding of group-level instructions within the prompt pool. To address this problem, we propose DAP, a pool-free approach that generates a suitable prompt in an instance-level manner at inference time. We optimize an adaptive prompt generator that creates instance-specific fine-grained instructions required for each input, enabling enhanced model plasticity and reduced forgetting. Our experiments on seven datasets with varying degrees of domain similarity to ImageNet demonstrate the superiority of DAP over state-of-the-art prompt-based methods. Code is publicly available at https://github.com/naver-ai/dap-cl.",
     }
 
+    prompt = "Instruct: Retrive papers in similar fields to Queries.\nQueries: \nTitle: {title}\nAbstract: {abstract}"
     normalized_compare_papers = {}
     for title, abstract in compare_papers.items():
         normalized_title = normalize_text(title)
         normalized_abstract = normalize_text(abstract)
         normalized_compare_papers[normalized_title] = normalized_abstract
 
-    compare_papers_list = [f"{k}: {v}" for k, v in normalized_compare_papers.items()]
+    compare_papers_list = [prompt.format(title=title, abstract=abstract) for title, abstract in normalized_compare_papers.items()]
     compare_papers_embeddings = get_embeddings(
         compare_papers_list, model, args.batch_size
     )
 
     normalized_titles = [normalize_text(title) for title in titles]
     normalized_abstracts = [normalize_text(abstract) for abstract in abstracts]
-    normalized_paper_list = [
-        f"{title}: {abstract}"
+    paper_list_for_embedding = [
+        prompt.format(title=title, abstract=abstract)
         for title, abstract in zip(normalized_titles, normalized_abstracts)
     ]
 
-    paper_embeddings = get_embeddings(normalized_paper_list, model, args.batch_size)
+    paper_embeddings = get_embeddings(paper_list_for_embedding, model, args.batch_size)
     
     print("\n유사 논문 검색을 시작합니다.")
     related_papers, num_paper = process_papers(
@@ -280,10 +270,8 @@ def main():
         paper_embeddings,
         compare_papers_embeddings,
         compare_papers,
-        model,
         args,
     )
-
     print(f"\n총 관련 논문 수: {num_paper}")
 
     if related_papers:
