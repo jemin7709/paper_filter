@@ -52,11 +52,19 @@ def parse_arguments():
         default=15.0,
         help="Select papers in the top percentile of similarity scores",
     )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu",
+        choices=["cuda", "mps", "cpu"],
+        help="Device to use for computation (cuda, mps, or cpu)",
+    )
     return parser.parse_args()
 
 
-def load_model() -> SentenceTransformer:
-    return SentenceTransformer('intfloat/multilingual-e5-large-instruct')
+def load_model(device: str) -> SentenceTransformer:
+    print(f"Device: {device}")
+    return SentenceTransformer('intfloat/multilingual-e5-large-instruct', device=device)
 
 
 def load_data(file_path: str) -> Tuple[List[str], List[str], List[str]]:
@@ -125,16 +133,18 @@ def process_papers(
 ) -> Tuple[List[Dict[str, Any]], int]:
     related_papers = []
     num_paper = 0
-    compare_papers_embeddings_tensor = torch.tensor(compare_papers_embeddings)
+    compare_papers_embeddings_tensor = torch.tensor(compare_papers_embeddings, device=args.device)
 
     with alive_bar(len(paper_embeddings), title="논문 분석 중") as bar:
         for i, paper_embedding_np in enumerate(paper_embeddings):
             title = titles[i]
             abstract = abstracts[i]
 
-            paper_embedding_tensor = torch.tensor(paper_embedding_np).unsqueeze(0)
+            paper_embedding_tensor = torch.tensor(paper_embedding_np, device=args.device).unsqueeze(0)
             similarities_tensor = util.pytorch_cos_sim(compare_papers_embeddings_tensor, paper_embedding_tensor)
             abstract_similarity = similarities_tensor.cpu().numpy().flatten()
+            
+            del paper_embedding_tensor, similarities_tensor
 
             mean_similarity = np.mean(abstract_similarity)
 
@@ -212,9 +222,10 @@ def save_results(
 
 def main():
     args = parse_arguments()
-    model = load_model()
+    model = load_model(args.device)
     titles, abstracts, _ = load_data(args.file)
 
+    print(f"논문 수: {len(titles)}")
     print("기준 논문과 입력 논문 임베딩 계산을 시작합니다.")
     compare_papers = {
         "Ablating Concepts in Text-to-Image Diffusion Models": "Large-scale text-to-image diffusion models can generate high-fidelity images with powerful compositional ability. However, these models are typically trained on an enormous amount of Internet data, often containing copyrighted material, licensed images, and personal photos. Furthermore, they have been found to replicate the style of various living artists or memorize exact training samples. How can we remove such copyrighted concepts or images without retraining the model from scratch? To achieve this goal, we propose an efficient method of ablating concepts in the pretrained model, i.e., preventing the generation of a target concept. Our algorithm learns to match the image distribution for a target style, instance, or text prompt we wish to ablate to the distribution corresponding to an anchor concept. This prevents the model from generating target concepts given its text condition. Extensive experiments show that our method can successfully prevent the generation of the ablated concept while preserving closely related concepts in the model.",
