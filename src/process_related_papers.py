@@ -5,8 +5,8 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 import pandas as pd
 import torch
-from sentence_transformers import SentenceTransformer, util
 from alive_progress import alive_bar
+from sentence_transformers import SentenceTransformer, util
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -25,7 +25,7 @@ def parse_arguments():
     parser.add_argument(
         "--similarity_threshold",
         type=float,
-        default=0.6,
+        default=0.9,
         help="Mean similarity threshold for related papers (0.0-1.0)",
     )
     parser.add_argument(
@@ -43,7 +43,7 @@ def parse_arguments():
     parser.add_argument(
         "--individual_sim_threshold",
         type=float,
-        default=0.65,
+        default=0.9,
         help="Threshold for individual paper similarity",
     )
     parser.add_argument(
@@ -55,7 +55,11 @@ def parse_arguments():
     parser.add_argument(
         "--device",
         type=str,
-        default="cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu",
+        default="cuda"
+        if torch.cuda.is_available()
+        else "mps"
+        if torch.backends.mps.is_available()
+        else "cpu",
         choices=["cuda", "mps", "cpu"],
         help="Device to use for computation (cuda, mps, or cpu)",
     )
@@ -64,7 +68,7 @@ def parse_arguments():
 
 def load_model(device: str) -> SentenceTransformer:
     print(f"Device: {device}")
-    return SentenceTransformer('intfloat/multilingual-e5-large-instruct', device=device)
+    return SentenceTransformer("intfloat/multilingual-e5-large-instruct", device=device)
 
 
 def load_data(file_path: str) -> Tuple[List[str], List[str], List[str]]:
@@ -92,7 +96,9 @@ def get_embeddings(
     texts: List[str], model: SentenceTransformer, batch_size: int
 ) -> np.ndarray:
     embeddings = []
-    with alive_bar(len(range(0, len(texts), batch_size)), title="임베딩 계산 중") as bar:
+    with alive_bar(
+        len(range(0, len(texts), batch_size)), title="임베딩 계산 중"
+    ) as bar:
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
             batch_embeddings = model.encode(
@@ -133,17 +139,23 @@ def process_papers(
 ) -> Tuple[List[Dict[str, Any]], int]:
     related_papers = []
     num_paper = 0
-    compare_papers_embeddings_tensor = torch.tensor(compare_papers_embeddings, device=args.device)
+    compare_papers_embeddings_tensor = torch.tensor(
+        compare_papers_embeddings, device=args.device
+    )
 
     with alive_bar(len(paper_embeddings), title="논문 분석 중") as bar:
         for i, paper_embedding_np in enumerate(paper_embeddings):
             title = titles[i]
             abstract = abstracts[i]
 
-            paper_embedding_tensor = torch.tensor(paper_embedding_np, device=args.device).unsqueeze(0)
-            similarities_tensor = util.pytorch_cos_sim(compare_papers_embeddings_tensor, paper_embedding_tensor)
+            paper_embedding_tensor = torch.tensor(
+                paper_embedding_np, device=args.device
+            ).unsqueeze(0)
+            similarities_tensor = util.pytorch_cos_sim(
+                compare_papers_embeddings_tensor, paper_embedding_tensor
+            )
             abstract_similarity = similarities_tensor.cpu().numpy().flatten()
-            
+
             del paper_embedding_tensor, similarities_tensor
 
             mean_similarity = np.mean(abstract_similarity)
@@ -260,7 +272,10 @@ def main():
         normalized_abstract = normalize_text(abstract)
         normalized_compare_papers[normalized_title] = normalized_abstract
 
-    compare_papers_list = [prompt.format(title=title, abstract=abstract) for title, abstract in normalized_compare_papers.items()]
+    compare_papers_list = [
+        prompt.format(title=title, abstract=abstract)
+        for title, abstract in normalized_compare_papers.items()
+    ]
     compare_papers_embeddings = get_embeddings(
         compare_papers_list, model, args.batch_size
     )
@@ -273,7 +288,7 @@ def main():
     ]
 
     paper_embeddings = get_embeddings(paper_list_for_embedding, model, args.batch_size)
-    
+
     print("\n유사 논문 검색을 시작합니다.")
     related_papers, num_paper = process_papers(
         titles,
